@@ -77,7 +77,9 @@ PING_SSH_FAILED   = -3
 
 LOGDIR = ""
 BLINK_ARROW = False
-PING_OPTIONS = []
+PING_OPTIONS = []     # extra ping options from command line, applied to all targets
+PING_OPTIONS_V4 = []  # extra ping options applied to IPv4 targets only
+PING_OPTIONS_V6 = []  # extra ping options applied to IPv6 targets only
 # ToDo: cleanup arguments handling
 
 class PingResult:
@@ -265,8 +267,13 @@ class Ping:
 
         cmd += self.pingcmd
 
-        # extra ping options: command line (global) then per-target config
+        # extra ping options: command line (common, then IP version-specific),
+        # finally per-target config
         cmd += PING_OPTIONS
+        if self.ipversion == 4:
+            cmd += PING_OPTIONS_V4
+        elif self.ipversion == 6:
+            cmd += PING_OPTIONS_V6
         cmd += self.pingopt
 
         # specifying source interface
@@ -975,6 +982,14 @@ if __name__ == '__main__':
                                "all targets, given as a single string. Since "
                                "the value starts with '-', use the '=' form, "
                                "e.g. -o=\"-s 1000 -w 2\"")
+    parser.add_argument("--ping-options-v4", default = "",
+                        dest = "pingopts_v4",
+                        help = "like -o but applied to IPv4 targets only, "
+                               "e.g. --ping-options-v4=\"-s 1000\"")
+    parser.add_argument("--ping-options-v6", default = "",
+                        dest = "pingopts_v6",
+                        help = "like -o but applied to IPv6 targets only, "
+                               "e.g. --ping-options-v6=\"-s 1000\"")
     parser.add_argument("configfile", type = argparse.FileType("r"),
                         help = "config file for deadman")
 
@@ -983,6 +998,8 @@ if __name__ == '__main__':
     BLINK_ARROW = args.blink_arrow
     LOGDIR = args.logdir
     PING_OPTIONS = args.pingopts.split()
+    PING_OPTIONS_V4 = args.pingopts_v4.split()
+    PING_OPTIONS_V6 = args.pingopts_v6.split()
 
     try:
         curses.wrapper(main, args.configfile, args.async_mode)
