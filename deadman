@@ -563,7 +563,7 @@ class CursesCtrl():
 
         # update reference
         self.ref_start = self.start_address + self.length_address + 1
-        self.ref_length = len(" LOSS  RTT  AVG  SNT")
+        self.ref_length = len(" LOSS  RTT  AVG  SNT  TTL")
 
         # update result
         self.res_start = self.ref_start + self.ref_length + 2
@@ -636,7 +636,7 @@ class CursesCtrl():
     def print_reference(self):
         hostname_str = "HOSTNAME"
         address_str = "ADDRESS"
-        values_str = " LOSS  RTT  AVG  SNT  RESULT"
+        values_str = " LOSS  RTT  AVG  SNT  TTL  RESULT"
 
         # Print reference hostname and address
         self.waddstr(TITLE_VERTIC_LENGTH, len(ARROW),
@@ -672,10 +672,11 @@ class CursesCtrl():
         linenum = number + TITLE_VERTIC_LENGTH
 
         # Print values
-        values_str = " %3d%% %4d %4d %4d  " % (int(target.lossrate),
-                                               target.rtt,
-                                               target.avg,
-                                               target.snt)
+        values_str = " %3d%% %4d %4d %4d %4d  " % (int(target.lossrate),
+                                                   target.rtt,
+                                                   target.avg,
+                                                   target.snt,
+                                                   target.ttl)
 
         # Print ping line
         self.waddstr(linenum, self.start_hostname,
