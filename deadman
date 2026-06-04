@@ -64,6 +64,8 @@ UP_COLOR = 2
 DOWN_COLOR = 3
 
 RTT_SCALE = 10
+TTL_SCALE = 32
+SHOW_TTL = False  # if True, the RESULT sparkline shows TTL instead of RTT
 
 SSH_CONNECT_TIMEOUT = 3
 
@@ -149,7 +151,7 @@ class PingTarget:
             self.state = False
 
         self.lossrate = float(self.loss) / float(self.snt) * 100.0
-        self.result.insert(0, self.get_result_char(res))
+        self.result.insert(0, res)
 
         while len(self.result) > RESULT_STR_LENGTH:
             self.result.pop()
@@ -170,13 +172,24 @@ class PingTarget:
             # ping timeout
             return "X"
 
-        if res.rtt < RTT_SCALE * 1: return "▁"
-        if res.rtt < RTT_SCALE * 2: return "▂"
-        if res.rtt < RTT_SCALE * 3: return "▃"
-        if res.rtt < RTT_SCALE * 4: return "▄"
-        if res.rtt < RTT_SCALE * 5: return "▅"
-        if res.rtt < RTT_SCALE * 6: return "▆"
-        if res.rtt < RTT_SCALE * 7: return "▇"
+        # success: scale either TTL or RTT into a bar character
+        if SHOW_TTL:
+            val = res.ttl
+            scale = TTL_SCALE
+            if val is None or val < 0:
+                # ttl unknown (e.g. snmp/tcp/routeros relay)
+                return "?"
+        else:
+            val = res.rtt
+            scale = RTT_SCALE
+
+        if val < scale * 1: return "▁"
+        if val < scale * 2: return "▂"
+        if val < scale * 3: return "▃"
+        if val < scale * 4: return "▄"
+        if val < scale * 5: return "▅"
+        if val < scale * 6: return "▆"
+        if val < scale * 7: return "▇"
 
         return "█"
 
@@ -502,6 +515,21 @@ class CursesCtrl():
                     self.erase_pingtarget(idx)
                     self.print_pingtarget(target, idx)
 
+            if ch == ord('t'):
+                # toggle the RESULT sparkline between RTT and TTL
+                global SHOW_TTL
+                SHOW_TTL = not SHOW_TTL
+
+                self.erase_title()
+                self.print_title()
+
+                for idx, target in enumerate(args, 1):
+                    if target == SEPARATOR:
+                        continue
+
+                    self.erase_pingtarget(idx)
+                    self.print_pingtarget(target, idx)
+
 
     def update_info(self, targets):
 
@@ -586,8 +614,12 @@ class CursesCtrl():
 
         spacelen = self.x - (len(ARROW) + len(TITLE_VERSION))
         self.waddstr(1, spacelen, TITLE_VERSION, curses.A_BOLD)
+        if SHOW_TTL:
+            scale_str = "TTL Scale %d" % TTL_SCALE
+        else:
+            scale_str = "RTT Scale %dms" % RTT_SCALE
         self.waddstr(2, len(ARROW),
-                     "RTT Scale %dms. Keys: (r)efresh" % RTT_SCALE)
+                     "%s. Keys: (r)efresh (t)oggle rtt/ttl" % scale_str)
         self.stdscr.move(0, 0)
         self.stdscr.refresh()
         return
@@ -655,7 +687,8 @@ class CursesCtrl():
 
 
         for n in range(len(target.result)):
-            if not target.result[n] in ("X", "t", "s"):
+            res = target.result[n]
+            if res.success:
                 color = curses.color_pair(UP_COLOR)
             else:
                 color = curses.color_pair(DOWN_COLOR)
@@ -663,7 +696,8 @@ class CursesCtrl():
             y, x = self.stdscr.getmaxyx()
             if self.res_start + n > x:
                 continue
-            self.waddstr(linenum, self.res_start + n, target.result[n], color)
+            self.waddstr(linenum, self.res_start + n,
+                         target.get_result_char(res), color)
 
         y, x = self.stdscr.getmaxyx()
         self.waddstr(linenum, x - len(REAR), REAR)
@@ -970,6 +1004,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--scale", type = int, default = 10,
                         help = "scale of ping RTT bar gap, default 10 (ms)")
+    parser.add_argument("-t", "--ttl", action = "store_true",
+                        help = "show TTL instead of RTT in the RESULT bar "
+                               "(toggle at runtime with the 't' key)")
+    parser.add_argument("--ttl-scale", type = int, default = 32,
+                        help = "scale of TTL bar gap, default 32")
     parser.add_argument("-a", "--async-mode", action = "store_true",
                         help = "send ping asynchronously")
     parser.add_argument("-b", "--blink-arrow", action = "store_true",
@@ -995,6 +1034,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     RTT_SCALE = args.scale
+    TTL_SCALE = args.ttl_scale
+    SHOW_TTL = args.ttl
     BLINK_ARROW = args.blink_arrow
     LOGDIR = args.logdir
     PING_OPTIONS = args.pingopts.split()
