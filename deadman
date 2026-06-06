@@ -26,7 +26,10 @@ from shutil import which
 
 TITLE_PROGNAME = "Dead Man"
 TITLE_VERSION = "[ver 22.02.10]"
-TITLE_VERTIC_LENGTH = 4
+TITLE_VERTIC_LENGTH_FULL = 4     # title block height in normal mode
+TITLE_VERTIC_LENGTH_COMPACT = 1  # title block height in compact mode
+TITLE_VERTIC_LENGTH = TITLE_VERTIC_LENGTH_FULL
+COMPACT_HEADER = False  # if True, collapse the title block into a single line
 
 hostname = socket.gethostname()
 
@@ -48,6 +51,15 @@ def get_title_hostinfo(with_wheel = False):
     else:
         global GLOBAL_STEP
         return TITLE_HOSTINFO + " " + ["|", "/", "-", "\\"][GLOBAL_STEP % 4]
+
+
+def apply_compact_header():
+    # keep TITLE_VERTIC_LENGTH (reference row position / target offset) in sync
+    global TITLE_VERTIC_LENGTH
+    if COMPACT_HEADER:
+        TITLE_VERTIC_LENGTH = TITLE_VERTIC_LENGTH_COMPACT
+    else:
+        TITLE_VERTIC_LENGTH = TITLE_VERTIC_LENGTH_FULL
 
 
 
@@ -530,6 +542,23 @@ class CursesCtrl():
                     self.erase_pingtarget(idx)
                     self.print_pingtarget(target, idx)
 
+            if ch == ord('c'):
+                # toggle compact header; line positions shift, so redraw all
+                global COMPACT_HEADER
+                COMPACT_HEADER = not COMPACT_HEADER
+                apply_compact_header()
+
+                self.stdscr.clear()
+                self.update_info(args)
+                self.print_title()
+                self.print_reference()
+
+                for idx, target in enumerate(args, 1):
+                    if target == SEPARATOR:
+                        self.print_separator(idx)
+                    else:
+                        self.print_pingtarget(target, idx)
+
 
     def update_info(self, targets):
 
@@ -604,6 +633,22 @@ class CursesCtrl():
 
     def print_title(self, with_wheel = False):
 
+        if SHOW_TTL:
+            scale_str = "TTL Scale %d" % TTL_SCALE
+        else:
+            scale_str = "RTT Scale %dms" % RTT_SCALE
+        keys_str = "Keys: (r)efresh (t)oggle rtt/ttl (c)ompact"
+
+        if COMPACT_HEADER:
+            # single condensed line: prog/ver
+            spacelen = int((self.x - len(TITLE_PROGNAME)) / 2)
+            self.waddstr(0, spacelen, TITLE_PROGNAME, curses.A_BOLD)
+            spacelen = self.x - (len(ARROW) + len(TITLE_VERSION))
+            self.waddstr(0, spacelen, TITLE_VERSION, curses.A_BOLD)
+            self.stdscr.move(0, 0)
+            self.stdscr.refresh()
+            return
+
         # Print Program name on center of top line
         spacelen = int((self.x - len(TITLE_PROGNAME)) / 2)
         self.waddstr(0, spacelen, TITLE_PROGNAME, curses.A_BOLD)
@@ -614,23 +659,16 @@ class CursesCtrl():
 
         spacelen = self.x - (len(ARROW) + len(TITLE_VERSION))
         self.waddstr(1, spacelen, TITLE_VERSION, curses.A_BOLD)
-        if SHOW_TTL:
-            scale_str = "TTL Scale %d" % TTL_SCALE
-        else:
-            scale_str = "RTT Scale %dms" % RTT_SCALE
-        self.waddstr(2, len(ARROW),
-                     "%s. Keys: (r)efresh (t)oggle rtt/ttl" % scale_str)
+        self.waddstr(2, len(ARROW), "%s. %s" % (scale_str, keys_str))
         self.stdscr.move(0, 0)
         self.stdscr.refresh()
         return
 
     def erase_title(self):
-        space = ""
-        for x in range(self.x):
-            space += " "
-        self.waddstr(0, 0, space)
-        self.waddstr(1, 0, space)
-        self.waddstr(2, 0, space)
+        space = " " * self.x
+        # erase only the title lines above the reference row
+        for line in range(TITLE_VERTIC_LENGTH):
+            self.waddstr(line, 0, space)
         return
 
     def print_reference(self):
@@ -1010,6 +1048,9 @@ if __name__ == '__main__':
                                "(toggle at runtime with the 't' key)")
     parser.add_argument("--ttl-scale", type = int, default = 32,
                         help = "scale of TTL bar gap, default 32")
+    parser.add_argument("-c", "--compact", action = "store_true",
+                        help = "collapse the header into a single line "
+                               "(toggle at runtime with the 'c' key)")
     parser.add_argument("-a", "--async-mode", action = "store_true",
                         help = "send ping asynchronously")
     parser.add_argument("-b", "--blink-arrow", action = "store_true",
@@ -1037,6 +1078,8 @@ if __name__ == '__main__':
     RTT_SCALE = args.scale
     TTL_SCALE = args.ttl_scale
     SHOW_TTL = args.ttl
+    COMPACT_HEADER = args.compact
+    apply_compact_header()
     BLINK_ARROW = args.blink_arrow
     LOGDIR = args.logdir
     PING_OPTIONS = args.pingopts.split()
