@@ -29,7 +29,11 @@ TITLE_VERSION = "[ver 22.02.10]"
 TITLE_VERTIC_LENGTH_FULL = 4     # title block height in normal mode
 TITLE_VERTIC_LENGTH_COMPACT = 1  # title block height in compact mode
 TITLE_VERTIC_LENGTH = TITLE_VERTIC_LENGTH_FULL
-COMPACT_HEADER = False  # if True, collapse the title block into a single line
+# compact display level: 0 = normal, 1 = compact header,
+# 2 = extra compact (compact header + drop the RTT/AVG columns)
+COMPACT_LEVEL = 0
+COMPACT_HEADER = False  # derived: True when the title block is collapsed
+EXTRA_COMPACT = False   # derived: True when the RTT/AVG columns are hidden
 
 hostname = socket.gethostname()
 
@@ -54,12 +58,39 @@ def get_title_hostinfo(with_wheel = False):
 
 
 def apply_compact_header():
-    # keep TITLE_VERTIC_LENGTH (reference row position / target offset) in sync
-    global TITLE_VERTIC_LENGTH
+    # keep the derived flags and TITLE_VERTIC_LENGTH (reference row position /
+    # target offset) in sync with COMPACT_LEVEL
+    global TITLE_VERTIC_LENGTH, COMPACT_HEADER, EXTRA_COMPACT
+    COMPACT_HEADER = COMPACT_LEVEL >= 1
+    EXTRA_COMPACT = COMPACT_LEVEL >= 2
     if COMPACT_HEADER:
         TITLE_VERTIC_LENGTH = TITLE_VERTIC_LENGTH_COMPACT
     else:
         TITLE_VERTIC_LENGTH = TITLE_VERTIC_LENGTH_FULL
+
+
+def value_columns_header():
+    # header labels for the value columns (without the RESULT label),
+    # honouring EXTRA_COMPACT (hide RTT/AVG) and TTL_COLUMN (hide TTL)
+    s = " LOSS"
+    if not EXTRA_COMPACT:
+        s += "  RTT  AVG"
+    s += "  SNT"
+    if TTL_COLUMN:
+        s += "  TTL"
+    return s
+
+
+def value_columns_str(target):
+    # value row matching value_columns_header(), with a trailing 2-space gap
+    s = " %3d%%" % int(target.lossrate)
+    if not EXTRA_COMPACT:
+        s += " %4d %4d" % (target.rtt, target.avg)
+    s += " %4d" % target.snt
+    if TTL_COLUMN:
+        s += " %4d" % target.ttl
+    s += "  "
+    return s
 
 
 
@@ -544,9 +575,10 @@ class CursesCtrl():
                     self.print_pingtarget(target, idx)
 
             if ch == ord('c'):
-                # toggle compact header; line positions shift, so redraw all
-                global COMPACT_HEADER
-                COMPACT_HEADER = not COMPACT_HEADER
+                # cycle normal -> compact header -> extra compact -> normal;
+                # line positions and columns shift, so redraw all
+                global COMPACT_LEVEL
+                COMPACT_LEVEL = (COMPACT_LEVEL + 1) % 3
                 apply_compact_header()
 
                 self.stdscr.clear()
@@ -593,10 +625,7 @@ class CursesCtrl():
 
         # update reference
         self.ref_start = self.start_address + self.length_address + 1
-        if TTL_COLUMN:
-            self.ref_length = len(" LOSS  RTT  AVG  SNT  TTL")
-        else:
-            self.ref_length = len(" LOSS  RTT  AVG  SNT")
+        self.ref_length = len(value_columns_header())
 
         # update result
         self.res_start = self.ref_start + self.ref_length + 2
@@ -678,10 +707,7 @@ class CursesCtrl():
     def print_reference(self):
         hostname_str = "HOSTNAME"
         address_str = "ADDRESS"
-        if TTL_COLUMN:
-            values_str = " LOSS  RTT  AVG  SNT  TTL  RESULT"
-        else:
-            values_str = " LOSS  RTT  AVG  SNT  RESULT"
+        values_str = value_columns_header() + "  RESULT"
 
         # Print reference hostname and address
         self.waddstr(TITLE_VERTIC_LENGTH, len(ARROW),
@@ -717,17 +743,7 @@ class CursesCtrl():
         linenum = number + TITLE_VERTIC_LENGTH
 
         # Print values
-        if TTL_COLUMN:
-            values_str = " %3d%% %4d %4d %4d %4d  " % (int(target.lossrate),
-                                                       target.rtt,
-                                                       target.avg,
-                                                       target.snt,
-                                                       target.ttl)
-        else:
-            values_str = " %3d%% %4d %4d %4d  " % (int(target.lossrate),
-                                                   target.rtt,
-                                                   target.avg,
-                                                   target.snt)
+        values_str = value_columns_str(target)
 
         # Print ping line
         self.waddstr(linenum, self.start_hostname,
@@ -1063,7 +1079,10 @@ if __name__ == '__main__':
                         help = "scale of TTL bar gap, default 32")
     parser.add_argument("-c", "--compact", action = "store_true",
                         help = "collapse the header into a single line "
-                               "(toggle at runtime with the 'c' key)")
+                               "(cycle at runtime with the 'c' key)")
+    parser.add_argument("-C", "--extra-compact", action = "store_true",
+                        help = "compact header and also hide the RTT/AVG "
+                               "columns (cycle at runtime with the 'c' key)")
     parser.add_argument("-a", "--async-mode", action = "store_true",
                         help = "send ping asynchronously")
     parser.add_argument("-b", "--blink-arrow", action = "store_true",
@@ -1092,7 +1111,12 @@ if __name__ == '__main__':
     TTL_SCALE = args.ttl_scale
     SHOW_TTL = args.ttl
     TTL_COLUMN = args.ttl
-    COMPACT_HEADER = args.compact
+    if args.extra_compact:
+        COMPACT_LEVEL = 2
+    elif args.compact:
+        COMPACT_LEVEL = 1
+    else:
+        COMPACT_LEVEL = 0
     apply_compact_header()
     BLINK_ARROW = args.blink_arrow
     LOGDIR = args.logdir
