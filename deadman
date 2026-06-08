@@ -78,6 +78,7 @@ DOWN_COLOR = 3
 RTT_SCALE = 10
 TTL_SCALE = 32
 SHOW_TTL = False  # if True, the RESULT sparkline shows TTL instead of RTT
+TTL_COLUMN = False  # if True, show the TTL column (set by -t at startup)
 
 SSH_CONNECT_TIMEOUT = 3
 
@@ -592,7 +593,10 @@ class CursesCtrl():
 
         # update reference
         self.ref_start = self.start_address + self.length_address + 1
-        self.ref_length = len(" LOSS  RTT  AVG  SNT  TTL")
+        if TTL_COLUMN:
+            self.ref_length = len(" LOSS  RTT  AVG  SNT  TTL")
+        else:
+            self.ref_length = len(" LOSS  RTT  AVG  SNT")
 
         # update result
         self.res_start = self.ref_start + self.ref_length + 2
@@ -674,7 +678,10 @@ class CursesCtrl():
     def print_reference(self):
         hostname_str = "HOSTNAME"
         address_str = "ADDRESS"
-        values_str = " LOSS  RTT  AVG  SNT  TTL  RESULT"
+        if TTL_COLUMN:
+            values_str = " LOSS  RTT  AVG  SNT  TTL  RESULT"
+        else:
+            values_str = " LOSS  RTT  AVG  SNT  RESULT"
 
         # Print reference hostname and address
         self.waddstr(TITLE_VERTIC_LENGTH, len(ARROW),
@@ -710,11 +717,17 @@ class CursesCtrl():
         linenum = number + TITLE_VERTIC_LENGTH
 
         # Print values
-        values_str = " %3d%% %4d %4d %4d %4d  " % (int(target.lossrate),
+        if TTL_COLUMN:
+            values_str = " %3d%% %4d %4d %4d %4d  " % (int(target.lossrate),
+                                                       target.rtt,
+                                                       target.avg,
+                                                       target.snt,
+                                                       target.ttl)
+        else:
+            values_str = " %3d%% %4d %4d %4d  " % (int(target.lossrate),
                                                    target.rtt,
                                                    target.avg,
-                                                   target.snt,
-                                                   target.ttl)
+                                                   target.snt)
 
         # Print ping line
         self.waddstr(linenum, self.start_hostname,
@@ -1078,6 +1091,7 @@ if __name__ == '__main__':
     RTT_SCALE = args.scale
     TTL_SCALE = args.ttl_scale
     SHOW_TTL = args.ttl
+    TTL_COLUMN = args.ttl
     COMPACT_HEADER = args.compact
     apply_compact_header()
     BLINK_ARROW = args.blink_arrow
